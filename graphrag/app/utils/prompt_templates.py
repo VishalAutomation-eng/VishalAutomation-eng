@@ -10,10 +10,10 @@ Rules:
 4) Entity types should be concise labels such as Person, Company, Location, Product, Event.
 5) Relation type must be UPPER_SNAKE_CASE.
 6) Output JSON only with this exact schema:
-{
-  "entities": [{"name": "", "type": ""}],
-  "relations": [{"source": "", "target": "", "type": ""}]
-}
+{{
+  "entities": [{{"name": "", "type": ""}}],
+  "relations": [{{"source": "", "target": "", "type": ""}}]
+}}
 If nothing is found, return empty arrays.
 
 Text:
