@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -6,6 +7,11 @@ from app.api.routes_chat import router as chat_router
 from app.api.routes_documents import router as docs_router
 from app.core.config import settings
 from app.db.session import Base, engine
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+)
 
 app = FastAPI(title=settings.app_name)
 

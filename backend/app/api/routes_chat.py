@@ -1,15 +1,18 @@
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.models import User
 from app.db.session import get_db
+from app.rag.main import pipeline
 from app.schemas.chat import ChatRequest
 from app.services.cache import cache_key, get_cached_response, set_cached_response
-from app.services.rag import retrieve_context, stream_answer
 
 router = APIRouter(prefix='/chat', tags=['chat'])
+logger = logging.getLogger(__name__)
 
 
 @router.post('/stream')
@@ -18,7 +21,17 @@ async def chat_stream(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    key = cache_key(str(current_user.id), payload.query, payload.filters)
+    del db  # Database session is intentionally unused for FAISS-based retrieval.
+
+    key = cache_key(
+        str(current_user.id),
+        payload.query,
+        {
+            'filters': payload.filters,
+            'selected_databases': payload.selected_databases,
+            'top_k': payload.top_k,
+        },
+    )
     cached = get_cached_response(key)
 
     async def event_generator():
@@ -27,22 +40,31 @@ async def chat_stream(
             yield {'event': 'done', 'data': '[DONE]'}
             return
 
-        rows = await retrieve_context(
-            db=db,
-            owner_id=str(current_user.id),
-            query=payload.query,
-            top_k=payload.top_k,
-            document_ids=payload.document_ids,
-            filters=payload.filters,
-        )
-        context = '\n\n'.join([r['chunk_text'] for r in rows])
+        try:
+            logger.info(
+                'chat.request',
+                extra={
+                    'user_id': str(current_user.id),
+                    'selected_databases': payload.selected_databases,
+                    'top_k': payload.top_k,
+                },
+            )
+            full_answer = ''
+            async for token in pipeline.answer(
+                query=payload.query,
+                selected_databases=payload.selected_databases,
+                top_k=payload.top_k,
+            ):
+                full_answer += token
+                yield {'event': 'token', 'data': token}
 
-        full_answer = ''
-        async for token in stream_answer(payload.query, context):
-            full_answer += token
-            yield {'event': 'token', 'data': token}
-
-        set_cached_response(key, full_answer)
-        yield {'event': 'done', 'data': '[DONE]'}
+            set_cached_response(key, full_answer)
+            yield {'event': 'done', 'data': '[DONE]'}
+        except ValueError as exc:
+            logger.exception('chat.validation_error', extra={'error': str(exc)})
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:  # pragma: no cover - defensive runtime catch
+            logger.exception('chat.processing_error', extra={'error': str(exc)})
+            raise HTTPException(status_code=502, detail='Failed to generate response') from exc
 
     return EventSourceResponse(event_generator())

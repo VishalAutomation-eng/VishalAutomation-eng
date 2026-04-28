@@ -32,9 +32,10 @@ class Settings(BaseSettings):
     aws_access_key_id: str = 'local-dev-key'
     aws_secret_access_key: str = 'local-dev-secret'
 
-    embedding_service_url: str = 'http://localhost:8050'
-    ollama_url: str = 'http://localhost:11434/api/generate'
+    embedding_service_url: str = 'http://111.118.189.124:8050'
+    ollama_url: str = 'http://111.118.189.124:11435/api/generate'
     model: str = 'gpt-oss:120b'
+    faiss_db_root: str = './data/faiss_dbs'
 
     chunk_size: int = 1000
     chunk_overlap: int = 150
